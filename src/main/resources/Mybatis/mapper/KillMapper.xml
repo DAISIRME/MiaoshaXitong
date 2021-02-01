@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.springboot.mapper.KillMapper">
+    <update id="Order">
+        update goods set number = number - 1 where id = #{id}
+    </update>
+    <select id="queryallgoods" resultType="org.springboot.entity.Goods">
+        select * from goods
+    </select>
+    <select id="querygoods" resultType="org.springboot.entity.Goods">
+        select * from goods where id = #{id}
+    </select>
+    <insert id="insertgoods" >
+        insert into goods values(#{id},#{name},1000)
+    </insert>
+
+</mapper>
