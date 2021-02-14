@@ -9,6 +9,7 @@ import org.springboot.mapper.KillMapper;
 import org.springboot.redis.RedissLockUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.sql.Time;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -26,7 +28,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class GoodsController {
     //redisson分布式锁
     //RLock lock = redisson.getLock(lockKey);
-//    private static RedissonClient redissonClient;
+//    private static RedissonClient redissonClient
     ReentrantLock lock = new ReentrantLock();
     @Autowired
     RedisUtil redisUtil;
@@ -39,8 +41,14 @@ public class GoodsController {
     @RequestMapping("/QueryAllGoods")
     public List<Goods> Query()
     {
+        List<Goods> goods = null;
         long start = System.currentTimeMillis();
-        List<Goods> goods = killMapper.queryallgoods();
+        for(int i = 2000;i<100000;i++)
+        {
+            System.out.println(killMapper.querygoods(i));
+//            System.out.println(redisUtil.get(String.valueOf(i)));
+//           goods.add((Goods)redisUtil.get(String.valueOf(i)));
+        }
 //        System.out.println(d);
 //        System.out.println("mysql执行时间为");
         System.out.println("mysql执行时间为");
@@ -52,7 +60,7 @@ public class GoodsController {
     {
         List<Goods> goods = null;
         long start = System.currentTimeMillis();
-        for(int i = 200;i<1000;i++)
+        for(int i = 2000;i<100000;i++)
         {
             System.out.println(redisUtil.get(String.valueOf(i)));
 //           goods.add((Goods)redisUtil.get(String.valueOf(i)));
@@ -84,9 +92,9 @@ public class GoodsController {
     public int insert()
     {
         int a=1;
-        for(;a<1000;a++)
+        for(;a<100000;a++)
         {
-            killMapper.insertgoods(100+a,"book"+a);
+            killMapper.insertgoods(2000+a,"book"+a);
         }
         return 1;
     }
@@ -99,21 +107,37 @@ public class GoodsController {
             {
                 @Override
                 public void run() {
-                    //redisson
-//                    RedissonClient redissonClient = ne;
-                    Redisson = RedissLockUtil.tryLock(+"", TimeUnit.SECONDS, 3, 20);
-                    lock.lock();
-                    //先向redis中查询商品剩余的数量
-                    Goods g = query(302);
-                    int number = g.getNumber();
-                    System.out.println(number);
-                    //先更新数据库,再删除redis中缓存的数据 保证数据的一致性
-                    if(number>0)
+                    int id = 2;
+                    int number;
+                    //校验请求ID 防止恶意请求 导致缓存击穿
+                    if(id < 0)
                     {
-                        killMapper.Order(302);
-                        redisUtil.del(String.valueOf(302));
+                        return;
                     }
-                    lock.unlock();
+//                  加锁 防止超卖现象的发生
+                    RedissLockUtil.tryLock("S", TimeUnit.SECONDS, 3, 20);
+//                   lock.lock();
+                    // 先向redis中查询商品剩余的数量
+                    Goods g = query(9);
+                    //缓存中没有
+                    if(StringUtils.isEmpty(g))
+                    {
+                        Goods g1 = killMapper.querygoods(id);
+                        number = g1.getNumber();
+                        if(number > 0)
+                        killMapper.Order(id);
+                    }
+                    //System.out.println(number);
+                    //先更新数据库,再删除redis中缓存的数据 保证数据的一致性
+                    {
+                        number = g.getNumber();
+                        if (number > 0) {
+                            killMapper.Order(id);
+                            redisUtil.del(String.valueOf(302));
+                        }
+                    }
+//                    lock.unlock();
+                    RedissLockUtil.unlock("S");
                 }
             });
         }

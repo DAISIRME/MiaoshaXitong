@@ -2,7 +2,7 @@ package org.springboot.mapper;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-import org.springboot.entity.Goods;
+import org.springboot.entity.Goods ;
 import org.springboot.entity.User;
 import org.springframework.stereotype.Repository;
 
