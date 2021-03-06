@@ -1,3 +1,5 @@
+
+
 spring:
   datasource:
     url: jdbc:mysql://localhost:3306/world?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=UTC
@@ -6,6 +8,17 @@ spring:
     driver-class-name: com.mysql.jdbc.Driver
   thymeleaf:
     cache: false
+  kafka:
+    bootstrap-servers: 127.0.0.1:9092 #指定kafka server的地址，集群配多个，中间，逗号隔开
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: default_consumer_group #群组ID
+      enable-auto-commit: true
+      auto-commit-interval: 1000
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 mybatis:
 #  type-aliases-package: org.springboot.entity.User
   mapper-locations: classpath:Mybatis/mapper/*.xml

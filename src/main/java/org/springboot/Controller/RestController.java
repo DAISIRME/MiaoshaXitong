@@ -53,6 +53,7 @@ public class RestController {
     @GetMapping("/redisinit")
     public List<Goods> redisinit()
     {
+//        bloomFilter
         List<Goods> goodses = killMapper.queryallgoods();
         for(Goods g:goodses)
         {

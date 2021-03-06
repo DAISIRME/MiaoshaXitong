@@ -1,13 +1,20 @@
 package org.springboot.Controller;
 
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.nio.NioEventLoop;
+import io.netty.channel.nio.NioEventLoopGroup;
+import lombok.SneakyThrows;
 import org.redisson.Redisson;
+import org.redisson.api.RBloomFilter;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.redisson.config.Config;
 import org.springboot.Util.RedisUtil;
 import org.springboot.entity.Goods;
 import org.springboot.mapper.KillMapper;
-import org.springboot.redis.RedissLockUtil;
+//import org.springboot.redis.RedissLockUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,10 +32,21 @@ import java.util.concurrent.locks.ReentrantLock;
 
 @Component
 @RestController
-public class GoodsController {
-    //redisson分布式锁
-    //RLock lock = redisson.getLock(lockKey);
-//    private static RedissonClient redissonClient
+public class GoodsController extends ChannelInboundHandlerAdapter {
+    @Autowired
+    private KafkaTemplate<String,Object> kafkaTemplate;
+    static Config config = new Config();
+//    config.useSingleServer().setAddress("redis://192.168.0.194:6379");
+    //		config.useSingleServer().setPassword("123");
+    //构造Redisson
+    static {
+        config.useSingleServer().setAddress("redis://127.0.0.1:6379");
+}
+    RedissonClient redisson = Redisson.create(config);
+
+
+    NioEventLoopGroup nioEventLoopGroup = new NioEventLoopGroup();
+    public RBloomFilter<String> bloomFilter = redisson.getBloomFilter("phoneList");
     ReentrantLock lock = new ReentrantLock();
     @Autowired
     RedisUtil redisUtil;
@@ -45,12 +63,9 @@ public class GoodsController {
         long start = System.currentTimeMillis();
         for(int i = 2000;i<100000;i++)
         {
-            System.out.println(killMapper.querygoods(i));
-//            System.out.println(redisUtil.get(String.valueOf(i)));
-//           goods.add((Goods)redisUtil.get(String.valueOf(i)));
+            Goods querygoods = killMapper.querygoods(i);
+            bloomFilter.add(String.valueOf(querygoods.getId()));
         }
-//        System.out.println(d);
-//        System.out.println("mysql执行时间为");
         System.out.println("mysql执行时间为");
         System.out.println(( System.currentTimeMillis()-start));
         return goods;
@@ -62,7 +77,6 @@ public class GoodsController {
         long start = System.currentTimeMillis();
         for(int i = 2000;i<100000;i++)
         {
-            System.out.println(redisUtil.get(String.valueOf(i)));
 //           goods.add((Goods)redisUtil.get(String.valueOf(i)));
         }
 //        System.out.println("mysql执行时间为");
@@ -105,40 +119,38 @@ public class GoodsController {
         {
             executor.submit(new Runnable()
             {
+                @SneakyThrows
                 @Override
                 public void run() {
                     int id = 2;
                     int number;
-                    //校验请求ID 防止恶意请求 导致缓存击穿
-                    if(id < 0)
-                    {
-                        return;
-                    }
+                    if(bloomFilter.contains(String.valueOf(id))) {
 //                  加锁 防止超卖现象的发生
-                    RedissLockUtil.tryLock("S", TimeUnit.SECONDS, 3, 20);
+                        redisson.getLock("S").tryLock(1000,100,TimeUnit.SECONDS);
 //                   lock.lock();
-                    // 先向redis中查询商品剩余的数量
-                    Goods g = query(9);
-                    //缓存中没有
-                    if(StringUtils.isEmpty(g))
-                    {
-                        Goods g1 = killMapper.querygoods(id);
-                        number = g1.getNumber();
-                        if(number > 0)
-                        killMapper.Order(id);
-                    }
-                    //System.out.println(number);
-                    //先更新数据库,再删除redis中缓存的数据 保证数据的一致性
-                    {
-                        number = g.getNumber();
-                        if (number > 0) {
-                            killMapper.Order(id);
-                            redisUtil.del(String.valueOf(302));
+                        // 先向redis中查询商品剩余的数量
+                        Goods g = query(9);
+                        //缓存中没有
+                        if (StringUtils.isEmpty(g)) {
+                            Goods g1 = killMapper.querygoods(id);
+                            number = g1.getNumber();
+                            if (number > 0) {
+                                kafkaTemplate.send("demo", "order" + id);
+//                                killMapper.Order(id);
+                            }
                         }
-                    }
+                        //System.out.println(number);
+                        //先更新数据库,再删除redis中缓存的数据 保证数据的一致性
+                        {
+                            number = g.getNumber();
+                            if (number > 0) {
+                                killMapper.Order(id);
+                                redisUtil.del(String.valueOf(302));
+                            }
+                        }
 //                    lock.unlock();
-                    RedissLockUtil.unlock("S");
-                }
+//                        RedissLockUtil.unlock("S");
+                    }  }
             });
         }
         return 1;
